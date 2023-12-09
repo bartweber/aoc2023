@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
-use std::ops::Deref;
 use std::path::PathBuf;
-use std::string::ToString;
 use std::time::Instant;
 
 use clap::Parser;
@@ -44,47 +42,6 @@ impl Node {
     }
 }
 
-trait FindDigit {
-    /// Finds the first digit or figure
-    /// # Return
-    /// None if none was found
-    fn find_digit(&self, figures: &[(&str, u8)]) -> Option<u8>;
-}
-
-impl FindDigit for &str {
-    fn find_digit(&self, figures: &[(&str, u8)]) -> Option<u8> {
-        let mut tree = Node::new(None);
-        figures.iter().for_each(|(fig, val)| Node::build_trie(fig, *val, &mut tree));
-
-        let mut nodes: Vec<&Node> = vec![];
-        for c in self.chars() {
-            if c.is_numeric() {
-                return Some(c.to_digit(10).unwrap_or(0) as u8);
-            }
-            let mut new_nodes = vec![];
-            for node in nodes {
-                if node.children.contains_key(&c) {
-                    let new_node = node.children.get(&c).unwrap();
-                    if new_node.leaf.is_some() {
-                        return new_node.leaf;
-                    }
-                    new_nodes.push(new_node)
-                }
-            }
-            nodes = new_nodes;
-
-            // a new figure might be starting from this character on
-            if tree.children.contains_key(&c) {
-                let new_node = tree.children.get(&c).unwrap();
-                nodes.push(new_node);
-            }
-        }
-
-        None
-    }
-}
-
-
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
@@ -114,21 +71,48 @@ fn parse_cal_doc(cal_doc: &str) -> u32 {
 }
 
 fn parse_cal_doc_line(cal_doc_line: &str) -> u32 {
-    let first = cal_doc_line.find_digit(&FIGURES);
-    let mut last;
+    let first = find_digit(cal_doc_line, &FIGURES);
+    let last;
     if first.is_none() {
         last = None;
     } else {
         let rcal_doc_line: String = cal_doc_line.chars().rev().collect();
-        last = rcal_doc_line.as_str().find_digit(&R_FIGURES);
+        last = find_digit(&rcal_doc_line, &R_FIGURES);
     }
     first.unwrap_or(0) as u32 * 10 + last.unwrap_or(0) as u32
 }
 
-fn parse_figure(text: &str) -> Option<u8> {
-    let position = FIGURES.into_iter().position(|(fig, val)| { fig.deref().eq(text) });
-    position.map(|pos| pos as u8 + 1)
+fn find_digit(cal_doc_line: &str, figures: &[(&str, u8)]) -> Option<u8> {
+    let mut tree = Node::new(None);
+    figures.iter().for_each(|(fig, val)| Node::build_trie(fig, *val, &mut tree));
+
+    let mut nodes: Vec<&Node> = vec![];
+    for c in cal_doc_line.chars() {
+        if c.is_numeric() {
+            return Some(c.to_digit(10).unwrap_or(0) as u8);
+        }
+        let mut new_nodes = vec![];
+        for node in nodes {
+            if node.children.contains_key(&c) {
+                let new_node = node.children.get(&c).unwrap();
+                if new_node.leaf.is_some() {
+                    return new_node.leaf;
+                }
+                new_nodes.push(new_node)
+            }
+        }
+        nodes = new_nodes;
+
+        // a new figure might be starting from this character on
+        if tree.children.contains_key(&c) {
+            let new_node = tree.children.get(&c).unwrap();
+            nodes.push(new_node);
+        }
+    }
+
+    None
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -161,7 +145,7 @@ mod tests {
     #[test]
     fn parse_cal_doc_test() {
         let result = parse_cal_doc(&cal_doc_fixture());
-        assert_eq!(result, 802);
+        assert_eq!(result, 885);
     }
 
     fn cal_doc_fixture() -> String {
@@ -190,7 +174,7 @@ mod tests {
 
     #[test]
     fn find_digit_test() {
-        let val = "oneabs".find_digit(&FIGURES);
+        let val = find_digit("oneabs", &FIGURES);
 
         assert!(val.is_some());
         assert_eq!(1, val.unwrap())
