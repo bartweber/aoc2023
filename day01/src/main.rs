@@ -28,7 +28,7 @@ impl Node {
     }
 
     /// build trie from figure
-    fn build_trie(figure: &str, value: u8, node: &mut Node) {
+    fn add_path(figure: &str, value: u8, node: &mut Node) {
         let mut child = node;
         for c in figure.chars() {
             child = child.add_child(c, None);
@@ -63,31 +63,30 @@ fn main() {
     let elapsed_time = t1 - t0;
 
     println!("sum of calibration values: {}", result);
-    println!("took: {} ms", elapsed_time.as_millis())
+    println!("took: {} µs", elapsed_time.as_micros())
 }
 
 fn parse_cal_doc(cal_doc: &str) -> u32 {
-    cal_doc.lines().map(|line| parse_cal_doc_line(line)).sum()
+    let mut tree = Node::new(None);
+    FIGURES.iter().for_each(|(fig, val)| Node::add_path(fig, *val, &mut tree));
+
+    let mut rtree = Node::new(None);
+    R_FIGURES.iter().for_each(|(fig, val)| Node::add_path(fig, *val, &mut rtree));
+
+    cal_doc.lines().map(|line| parse_cal_doc_line(line, &tree, &rtree)).sum()
 }
 
-fn parse_cal_doc_line(cal_doc_line: &str) -> u32 {
-    let first = find_digit(cal_doc_line, &FIGURES);
-    let last;
-    if first.is_none() {
-        last = None;
-    } else {
-        let rcal_doc_line: String = cal_doc_line.chars().rev().collect();
-        last = find_digit(&rcal_doc_line, &R_FIGURES);
-    }
+fn parse_cal_doc_line(cal_doc_line: &str, tree: &Node, rtree: &Node) -> u32 {
+    let first = find_digit(cal_doc_line.chars(), tree);
+    if first.is_none() { return 0 }
+    let last = find_digit(cal_doc_line.chars().rev(), rtree);
+
     first.unwrap_or(0) as u32 * 10 + last.unwrap_or(0) as u32
 }
 
-fn find_digit(cal_doc_line: &str, figures: &[(&str, u8)]) -> Option<u8> {
-    let mut tree = Node::new(None);
-    figures.iter().for_each(|(fig, val)| Node::build_trie(fig, *val, &mut tree));
-
+fn find_digit(cal_doc_line_chars: impl Iterator<Item=char>, tree: &Node) -> Option<u8> {
     let mut nodes: Vec<&Node> = vec![];
-    for c in cal_doc_line.chars() {
+    for c in cal_doc_line_chars {
         if c.is_numeric() {
             return Some(c.to_digit(10).unwrap_or(0) as u8);
         }
@@ -113,32 +112,31 @@ fn find_digit(cal_doc_line: &str, figures: &[(&str, u8)]) -> Option<u8> {
     None
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn parse_cal_doc_line_test() {
-        let result = parse_cal_doc_line("1abc2");
+        let result = parse_cal_doc_line("1abc2", &get_tree(), &get_rtree());
         assert_eq!(result, 12);
 
-        let result = parse_cal_doc_line("pqr3stu8vwx");
+        let result = parse_cal_doc_line("pqr3stu8vwx", &get_tree(), &get_rtree());
         assert_eq!(result, 38);
 
-        let result = parse_cal_doc_line("eightwothree");
+        let result = parse_cal_doc_line("eightwothree", &get_tree(), &get_rtree());
         assert_eq!(result, 83);
 
-        let result = parse_cal_doc_line("twoeighthree");
+        let result = parse_cal_doc_line("twoeighthree", &get_tree(), &get_rtree());
         assert_eq!(result, 23);
 
-        let result = parse_cal_doc_line("eightwothree");
+        let result = parse_cal_doc_line("eightwothree", &get_tree(), &get_rtree());
         assert_eq!(result, 83);
 
-        let result = parse_cal_doc_line("fifour");
+        let result = parse_cal_doc_line("fifour", &get_tree(), &get_rtree());
         assert_eq!(result, 44);
 
-        let result = parse_cal_doc_line("onine");
+        let result = parse_cal_doc_line("onine", &get_tree(), &get_rtree());
         assert_eq!(result, 99);
     }
 
@@ -174,9 +172,21 @@ mod tests {
 
     #[test]
     fn find_digit_test() {
-        let val = find_digit("oneabs", &FIGURES);
+        let val = find_digit("oneabs".chars(), &get_tree());
 
         assert!(val.is_some());
         assert_eq!(1, val.unwrap())
+    }
+
+    fn get_tree() -> Node {
+        let mut tree = Node::new(None);
+        FIGURES.iter().for_each(|(fig, val)| Node::add_path(fig, *val, &mut tree));
+        tree
+    }
+
+    fn get_rtree() -> Node {
+        let mut rtree = Node::new(None);
+        R_FIGURES.iter().for_each(|(fig, val)| Node::add_path(fig, *val, &mut rtree));
+        rtree
     }
 }
